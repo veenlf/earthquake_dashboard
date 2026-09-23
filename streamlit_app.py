@@ -1,53 +1,40 @@
-"""Streamlit earthquake dashboard."""
+"""Streamlit earthquake dashboard with tectonic plate correlation."""
 
 from __future__ import annotations
 
 import numpy as np
 import pandas as pd
 import streamlit as st
-
-
-
+from shapely import wkt
+from shapely.geometry import Point
+from shapely.strtree import STRtree
 
 
 st.set_page_config(page_title="Earthquake Dashboard", page_icon="🌍", layout="wide")
 
 
+# Data loaders
 
 @st.cache_data
-
 def demo_data() -> pd.DataFrame:
-
-	rng = np.random.default_rng(42)
-
-	count = 250
-
-	return pd.DataFrame(
-
-		{
-
-			"time": pd.Timestamp("2024-01-01") + pd.to_timedelta(rng.integers(0, 180, count), unit="D"),
-
-			"latitude": rng.uniform(-55, 65, count),
-
-			"longitude": rng.uniform(-170, 170, count),
-
-			"magnitude": np.round(rng.uniform(2.5, 7.2, count), 1),
-
-			"depth_km": np.round(rng.uniform(1, 180, count), 1),
-
-			"place": rng.choice(["Pacific Ocean", "Japan", "California", "Chile", "Indonesia"], count),
-
-		}
-
-	).sort_values("time")
-
-
-
+    """Fallback demo data if nothing else loads."""
+    rng = np.random.default_rng(42)
+    count = 250
+    return pd.DataFrame(
+        {
+            "time": pd.Timestamp("2024-01-01") + pd.to_timedelta(rng.integers(0, 180, count), unit="D"),
+            "latitude": rng.uniform(-55, 65, count),
+            "longitude": rng.uniform(-170, 170, count),
+            "magnitude": np.round(rng.uniform(2.5, 7.2, count), 1),
+            "depth_km": np.round(rng.uniform(1, 180, count), 1),
+            "place": rng.choice(["Pacific Ocean", "Japan", "California", "Chile", "Indonesia"], count),
+        }
+    ).sort_values("time")
 
 
 @st.cache_data
 def load_csv(file) -> pd.DataFrame:
+    """Load a USGS-style earthquake CSV (uploaded file OR path)."""
     data = pd.read_csv(file).rename(
         columns={"mag": "magnitude", "lat": "latitude", "lon": "longitude", "depth": "depth_km"}
     )
@@ -57,85 +44,259 @@ def load_csv(file) -> pd.DataFrame:
         raise ValueError(f"Missing columns: {', '.join(sorted(missing))}")
     if "time" not in data:
         data["time"] = pd.Timestamp.today().normalize()
-    # Force timezone-naive datetime for consistency
+    # Force UTC-naive so resample/date ops work cleanly
     data["time"] = pd.to_datetime(data["time"], errors="coerce", utc=True).dt.tz_localize(None)
     return data.dropna(subset=["time", *required])
 
 
+@st.cache_data
+def load_plates(path: str = "tectonic_plates.csv") -> pd.DataFrame:
+    """Load tectonic plates CSV and parse WKT geometry strings."""
+    plates = pd.read_csv(path)
+    plates = plates.dropna(subset=["geometry"]).copy()
+    plates["geometry"] = plates["geometry"].apply(wkt.loads)
+    return plates
+
+
+@st.cache_data
+def annotate_with_plates(eq_df: pd.DataFrame, plates_df: pd.DataFrame) -> pd.DataFrame:
+    """Attach the nearest plate boundary info to every earthquake."""
+    if eq_df.empty:
+        return eq_df.assign(
+            nearest_plate=pd.Series(dtype="object"),
+            plate_label=pd.Series(dtype="object"),
+            distance_deg=pd.Series(dtype="float64"),
+            distance_km=pd.Series(dtype="float64"),
+        )
+
+    geoms = plates_df["geometry"].tolist()
+    tree = STRtree(geoms)
+
+    names, labels, dists = [], [], []
+    for lon, lat in zip(eq_df["longitude"], eq_df["latitude"]):
+        try:
+            p = Point(float(lon), float(lat))
+            i = tree.nearest(p)
+            g = geoms[i]
+            names.append(plates_df.iloc[i]["NAME"])
+            labels.append(plates_df.iloc[i]["LABEL"])
+            dists.append(p.distance(g))
+        except Exception:
+            names.append(None)
+            labels.append(None)
+            dists.append(np.nan)
+
+    out = eq_df.assign(
+        nearest_plate=names,
+        plate_label=labels,
+        distance_deg=dists,
+    )
+    # Approximate km (shrinks with latitude)
+    out["distance_km"] = out["distance_deg"] * 111 * np.cos(np.radians(out["latitude"]))
+    return out
+
+
+# Header
 
 st.title("🌍 Earthquake Dashboard")
-st.caption("Explore earthquake activity by location, magnitude, and time.")
+st.caption("Explore earthquake activity and how it correlates with tectonic plate boundaries.")
 
+
+# Sidebar: upload + filters
 
 with st.sidebar:
+    st.header("Filters")
+    upload = st.file_uploader("Upload earthquake CSV", type="csv")
 
-	st.header("Filters")
+    try:
+        if upload:
+            earthquakes = load_csv(upload)
+        else:
+            earthquakes = load_csv("2.5_month.csv")
+    except (ValueError, FileNotFoundError, pd.errors.ParserError) as error:
+        st.error(f"Could not load earthquake data: {error}")
+        st.stop()
 
-	upload = st.file_uploader("Upload earthquake CSV", type="csv")
+    try:
+        plates = load_plates("tectonic_plates.csv")
+    except FileNotFoundError:
+        plates = None
+        st.warning("tectonic_plates.csv not found — plate correlation disabled.")
 
-	try:
+    # Annotate earthquakes with nearest plate boundary (cached)
+    if plates is not None:
+        with st.spinner("Matching earthquakes to plate boundaries…"):
+            earthquakes = annotate_with_plates(earthquakes, plates)
 
-		earthquakes = load_csv(upload) if upload else load_csv("2.5_month.csv")
+    minimum = float(earthquakes["magnitude"].min())
+    maximum = float(earthquakes["magnitude"].max())
+    min_magnitude = st.slider("Minimum magnitude", 0.0, max(10.0, maximum), minimum, 0.1)
+    available_dates = earthquakes["time"].dt.date
+    date_range = st.date_input("Date range", (available_dates.min(), available_dates.max()))
 
-	except (ValueError, pd.errors.ParserError) as error:
-		st.error(str(error))
-		st.stop()
+    # Optional: filter to quakes close to a boundary
+    if plates is not None:
+        max_distance = st.slider(
+            "Max distance to plate boundary (km)",
+            min_value=0,
+            max_value=3000,
+            value=3000,
+            step=50,
+        )
+    else:
+        max_distance = None
 
 
-	minimum = float(earthquakes["magnitude"].min())
-
-	maximum = float(earthquakes["magnitude"].max())
-
-	min_magnitude = st.slider("Minimum magnitude", 0.0, max(10.0, maximum), minimum, 0.1)
-
-	available_dates = earthquakes["time"].dt.date
-
-	date_range = st.date_input("Date range", (available_dates.min(), available_dates.max()))
-
+# Apply filters
 
 filtered = earthquakes[earthquakes["magnitude"] >= min_magnitude].copy()
-
 if isinstance(date_range, (tuple, list)) and len(date_range) == 2:
+    filtered = filtered[filtered["time"].dt.date.between(date_range[0], date_range[1])]
+if max_distance is not None and "distance_km" in filtered:
+    filtered = filtered[filtered["distance_km"].fillna(np.inf) <= max_distance]
 
-	filtered = filtered[filtered["time"].dt.date.between(date_range[0], date_range[1])]
 
+# Metrics
 
-col1, col2, col3 = st.columns(3)
-
+col1, col2, col3, col4 = st.columns(4)
 col1.metric("Earthquakes", f"{len(filtered):,}")
-
 col2.metric("Largest magnitude", f"{filtered.magnitude.max():.1f}" if len(filtered) else "—")
+col3.metric(
+    "Average depth",
+    f"{filtered.depth_km.mean():.1f} km" if "depth_km" in filtered and len(filtered) else "—",
+)
+if "distance_km" in filtered and len(filtered):
+    col4.metric("Median dist. to boundary", f"{filtered.distance_km.median():.0f} km")
+else:
+    col4.metric("Median dist. to boundary", "—")
 
-col3.metric("Average depth", f"{filtered.depth_km.mean():.1f} km" if "depth_km" in filtered and len(filtered) else "—")
 
+# Map + activity over time
 
 map_col, chart_col = st.columns([1.25, 1])
 
 with map_col:
-
-	st.subheader("Earthquake locations")
-
-	if filtered.empty:
-
-		st.info("No earthquakes match the selected filters.")
-
-	else:
-
-		st.map(filtered.rename(columns={"latitude": "lat", "longitude": "lon"})[["lat", "lon"]])
+    st.subheader("Earthquake locations")
+    if filtered.empty:
+        st.info("No earthquakes match the selected filters.")
+    else:
+        if "plate_label" in filtered and filtered["plate_label"].notna().any():
+            st.map(
+                filtered.rename(columns={"latitude": "lat", "longitude": "lon"})[
+                    ["lat", "lon", "plate_label"]
+                ],
+                color="plate_label",
+            )
+        else:
+            st.map(filtered.rename(columns={"latitude": "lat", "longitude": "lon"})[["lat", "lon"]])
 
 with chart_col:
+    st.subheader("Activity over time")
+    if filtered.empty:
+        st.info("No data to plot.")
+    else:
+        st.line_chart(
+            filtered.set_index("time").resample("D").size().rename("earthquakes")
+        )
 
-	st.subheader("Activity over time")
-
-	st.line_chart(filtered.set_index("time").resample("D").size().rename("earthquakes"))
 
 
+# Plate boundary correlation
+
+
+if "plate_label" in filtered and filtered["plate_label"].notna().any():
+    st.divider()
+    st.header("🌐 Correlation with tectonic plate boundaries")
+
+    boundary_stats = (
+        filtered.groupby("plate_label")
+        .agg(
+            count=("magnitude", "size"),
+            avg_magnitude=("magnitude", "mean"),
+            max_magnitude=("magnitude", "max"),
+            avg_depth_km=("depth_km", "mean") if "depth_km" in filtered else ("magnitude", "size"),
+            median_distance_km=("distance_km", "median"),
+        )
+        .round(2)
+        .sort_values("count", ascending=False)
+    )
+
+    b1, b2 = st.columns([1, 1])
+
+    with b1:
+        st.subheader("Stats by boundary type")
+        st.dataframe(boundary_stats, use_container_width=True)
+
+    with b2:
+        st.subheader("Average magnitude by boundary type")
+        st.bar_chart(boundary_stats["avg_magnitude"])
+
+    st.subheader("Magnitude distribution by boundary type")
+    # Box plot built from a stacked dataframe
+    box_data = (
+        filtered.dropna(subset=["plate_label"])
+        .groupby(["plate_label", pd.cut(filtered["magnitude"], bins=20)])
+        .size()
+        .rename("count")
+        .reset_index()
+    )
+    st.bar_chart(
+        filtered.dropna(subset=["plate_label"]),
+        x="plate_label",
+        y="magnitude",
+        color="plate_label",
+    )
+
+    st.subheader("Depth vs. distance to nearest plate boundary")
+    scatter_df = filtered.dropna(subset=["distance_km", "depth_km"])
+    if not scatter_df.empty:
+        st.scatter_chart(
+            scatter_df,
+            x="distance_km",
+            y="depth_km",
+            color="plate_label",
+            size="magnitude",
+        )
+    else:
+        st.info("Not enough data for scatter plot.")
+
+    st.subheader("Are quakes clustered near boundaries?")
+    st.caption("Most earthquakes should fall within ~200 km of a plate boundary.")
+    hist = pd.cut(
+        filtered["distance_km"],
+        bins=[0, 50, 100, 200, 500, 1000, 2000, np.inf],
+        labels=["0–50", "50–100", "100–200", "200–500", "500–1k", "1k–2k", ">2k"],
+    ).value_counts().sort_index()
+    st.bar_chart(hist)
+
+
+# Recent earthquakes table
+
+
+st.divider()
 st.subheader("Recent earthquakes")
 
-columns = [c for c in ["time", "place", "magnitude", "depth_km", "latitude", "longitude"] if c in filtered]
-st.dataframe(filtered.sort_values("time", ascending=False)[columns].head(100), use_container_width=True, hide_index=True)
+columns = [
+    c
+    for c in [
+        "time",
+        "place",
+        "magnitude",
+        "depth_km",
+        "latitude",
+        "longitude",
+        "nearest_plate",
+        "plate_label",
+        "distance_km",
+    ]
+    if c in filtered
+]
 
-
-jls_extract_var = st
-jls_extract_var.dataframe(filtered.sort_values("time", ascending=False)[columns].head(100), use_container_width=True, hide_index=True)
-
+if filtered.empty:
+    st.info("No earthquakes match the selected filters.")
+else:
+    st.dataframe(
+        filtered.sort_values("time", ascending=False)[columns].head(100),
+        use_container_width=True,
+        hide_index=True,
+    )
