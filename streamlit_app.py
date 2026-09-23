@@ -7,9 +7,7 @@ import pandas as pd
 import streamlit as st
 
 
-# Single sheet
-df = pd.read_excel("2.5_month.xlsx")
-df.to_csv("2.5_month.csv", index=False)
+
 
 
 st.set_page_config(page_title="Earthquake Dashboard", page_icon="🌍", layout="wide")
@@ -46,30 +44,22 @@ def demo_data() -> pd.DataFrame:
 
 
 
+
+
 @st.cache_data
-
 def load_csv(file) -> pd.DataFrame:
-
-	data = pd.read_csv(file).rename(
-
-		columns={"mag": "magnitude", "lat": "latitude", "lon": "longitude", "depth": "depth_km"}
-	)
-
-	required = {"latitude", "longitude", "magnitude"}
-
-	missing = required - set(data.columns)
-
-	if missing:
-
-		raise ValueError(f"Missing columns: {', '.join(sorted(missing))}")
-
-	if "time" not in data:
-
-		data["time"] = pd.Timestamp.today().normalize()
-
-	data["time"] = pd.to_datetime(data["time"], errors="coerce")
-
-	return data.dropna(subset=["time", *required])
+    data = pd.read_csv(file).rename(
+        columns={"mag": "magnitude", "lat": "latitude", "lon": "longitude", "depth": "depth_km"}
+    )
+    required = {"latitude", "longitude", "magnitude"}
+    missing = required - set(data.columns)
+    if missing:
+        raise ValueError(f"Missing columns: {', '.join(sorted(missing))}")
+    if "time" not in data:
+        data["time"] = pd.Timestamp.today().normalize()
+    # Force timezone-naive datetime for consistency
+    data["time"] = pd.to_datetime(data["time"], errors="coerce", utc=True).dt.tz_localize(None)
+    return data.dropna(subset=["time", *required])
 
 
 
@@ -85,7 +75,7 @@ with st.sidebar:
 
 	try:
 
-		earthquakes = load_csv(upload) if upload else demo_data()
+		earthquakes = load_csv(upload) if upload else load_csv("2.5_month.csv")
 
 	except (ValueError, pd.errors.ParserError) as error:
 		st.error(str(error))
