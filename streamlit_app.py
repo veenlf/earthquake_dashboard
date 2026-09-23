@@ -220,6 +220,24 @@ with map_col:
             )
             map_df["radius"] = map_df["magnitude"].clip(lower=1) * 8000
 
+            view = pdk.ViewState(latitude=10, longitude=0, zoom=1, pitch=0)
+
+            layers = []
+
+            # Plate boundary lines — drawn first, sits behind the dots
+            if plates is not None:
+                plate_layer = pdk.Layer(
+                    "PathLayer",
+                    data=plates,
+                    get_path="paths",
+                    get_color=[0, 200, 255, 70],
+                    width_units="pixels",
+                    get_width=1.5,
+                    pickable=False,
+                )
+                layers.append(plate_layer)
+
+            # Earthquake dots — drawn second, on top of the lines
             eq_layer = pdk.Layer(
                 "ScatterplotLayer",
                 data=map_df,
@@ -227,24 +245,10 @@ with map_col:
                 get_fill_color="color",
                 get_radius="radius",
                 pickable=True,
-                opacity=0.8,
+                opacity=0.85,
                 stroked=False,
             )
-            view = pdk.ViewState(latitude=10, longitude=0, zoom=1, pitch=0)
-
-            # Plate boundary lines layer
-            layers = [eq_layer]
-            if plates is not None:
-                plate_layer = pdk.Layer(
-                    "PathLayer",
-                    data=plates,
-                    get_path="paths",
-                    get_color=[255, 255, 255, 110],
-                    width_scale=15,
-                    width_min_pixels=1,
-                    pickable=False,
-                )
-                layers.append(plate_layer)
+            layers.append(eq_layer)
 
             st.pydeck_chart(
                 pdk.Deck(
