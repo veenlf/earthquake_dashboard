@@ -5,12 +5,23 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import streamlit as st
+import pydeck as pdk
 from shapely import wkt
 from shapely.geometry import Point
 from shapely.strtree import STRtree
 
 
 st.set_page_config(page_title="Earthquake Dashboard", page_icon="🌍", layout="wide")
+
+
+# Colors for each boundary type
+PLATE_COLORS = {
+    "Convergent Boundary": [255, 100, 100, 180],
+    "Divergent Boundary":  [100, 150, 255, 180],
+    "Transform Boundary":  [255, 200,  80, 180],
+    "Other":               [180, 180, 180, 180],
+}
+DEFAULT_COLOR = [150, 150, 150, 180]
 
 
 # Data loaders
@@ -180,17 +191,35 @@ with map_col:
     if filtered.empty:
         st.info("No earthquakes match the selected filters.")
     else:
-        map_df = filtered.rename(columns={"latitude": "lat", "longitude": "lon"})
+        map_df = filtered.dropna(subset=["latitude", "longitude"]).copy()
         if "plate_label" in map_df and map_df["plate_label"].notna().any():
-            st.scatter_chart(
-                map_df,
-                x="lon",
-                y="lat",
-                color="plate_label",
-                size="magnitude",
+            map_df["color"] = map_df["plate_label"].map(PLATE_COLORS).apply(
+                lambda c: c if isinstance(c, list) else DEFAULT_COLOR
+            )
+            map_df["radius"] = map_df["magnitude"].clip(lower=1) * 8000
+
+            layer = pdk.Layer(
+                "ScatterplotLayer",
+                data=map_df,
+                get_position=["longitude", "latitude"],
+                get_fill_color="color",
+                get_radius="radius",
+                pickable=True,
+                opacity=0.8,
+                stroked=False,
+            )
+            view = pdk.ViewState(latitude=10, longitude=0, zoom=1, pitch=0)
+            st.pydeck_chart(
+                pdk.Deck(
+                    layers=[layer],
+                    initial_view_state=view,
+                    tooltip={"text": "{place}\nMag: {magnitude}\n{plate_label}"},
+                )
             )
         else:
-            st.map(map_df[["lat", "lon"]])
+            st.map(
+                map_df.rename(columns={"latitude": "lat", "longitude": "lon"})[["lat", "lon"]]
+            )
 
 with chart_col:
     st.subheader("Activity over time")
