@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import plotly.express as px
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -10,7 +9,6 @@ import pydeck as pdk
 from shapely import wkt
 from shapely.geometry import Point
 from shapely.strtree import STRtree
-
 
 
 st.set_page_config(page_title="Earthquake Dashboard", page_icon="🌍", layout="wide")
@@ -68,6 +66,17 @@ def load_plates(path: str = "tectonic_plates.csv") -> pd.DataFrame:
     plates = pd.read_csv(path)
     plates = plates.dropna(subset=["geometry"]).copy()
     plates["geometry"] = plates["geometry"].apply(wkt.loads)
+
+    # Convert every geometry (LineString or MultiLineString) into a list of
+    # coordinate paths so pydeck's PathLayer can draw them.
+    def to_paths(geom):
+        if geom.geom_type == "LineString":
+            return [list(geom.coords)]
+        if geom.geom_type == "MultiLineString":
+            return [list(line.coords) for line in geom.geoms]
+        return []
+
+    plates["paths"] = plates["geometry"].apply(to_paths)
     return plates
 
 
@@ -190,6 +199,17 @@ map_col, chart_col = st.columns([1.25, 1])
 
 with map_col:
     st.subheader("Earthquake locations")
+
+    # Legend
+    st.markdown(
+        "<span style='color:#ff6464'>●</span> Convergent &nbsp; "
+        "<span style='color:#6496ff'>●</span> Divergent &nbsp; "
+        "<span style='color:#ffc850'>●</span> Transform &nbsp; "
+        "<span style='color:#b4b4b4'>●</span> Other &nbsp; "
+        "— <em>dot size = magnitude</em>",
+        unsafe_allow_html=True,
+    )
+
     if filtered.empty:
         st.info("No earthquakes match the selected filters.")
     else:
@@ -200,7 +220,7 @@ with map_col:
             )
             map_df["radius"] = map_df["magnitude"].clip(lower=1) * 8000
 
-            layer = pdk.Layer(
+            eq_layer = pdk.Layer(
                 "ScatterplotLayer",
                 data=map_df,
                 get_position=["longitude", "latitude"],
@@ -211,9 +231,24 @@ with map_col:
                 stroked=False,
             )
             view = pdk.ViewState(latitude=10, longitude=0, zoom=1, pitch=0)
+
+            # Plate boundary lines layer
+            layers = [eq_layer]
+            if plates is not None:
+                plate_layer = pdk.Layer(
+                    "PathLayer",
+                    data=plates,
+                    get_path="paths",
+                    get_color=[255, 255, 255, 110],
+                    width_scale=15,
+                    width_min_pixels=1,
+                    pickable=False,
+                )
+                layers.append(plate_layer)
+
             st.pydeck_chart(
                 pdk.Deck(
-                    layers=[layer],
+                    layers=layers,
                     initial_view_state=view,
                     tooltip={"text": "{place}\nMag: {magnitude}\n{plate_label}"},
                 )
@@ -326,152 +361,3 @@ else:
         use_container_width=True,
         hide_index=True,
     )
-
-
-
-
-# Magnitude analyse
-st.subheader("Magnitude analysis")
-
-col1, col2, col3, col4 = st.columns(4)
-
-col1.metric(
-    "Average magnitude",
-    f"{filtered['magnitude'].mean():.2f}"
-)
-
-col2.metric(
-    "Median magnitude",
-    f"{filtered['magnitude'].median():.2f}"
-)
-
-col3.metric(
-    "Minimum magnitude",
-    f"{filtered['magnitude'].min():.2f}"
-)
-
-col4.metric(
-    "Maximum magnitude",
-    f"{filtered['magnitude'].max():.2f}"
-)
-
-
-# Histogram: laat zien welke magnitudes het vaakst voorkomen
-fig = px.histogram(
-    filtered,
-    x="magnitude",
-    nbins=25,
-    title="Distribution of earthquake magnitudes",
-    labels={
-        "magnitude": "Magnitude",
-        "count": "Number of earthquakes"
-    }
-)
-
-fig.update_layout(
-    xaxis_title="Magnitude",
-    yaxis_title="Number of earthquakes"
-)
-
-st.plotly_chart(fig, use_container_width=True)
-
-
-# Verdeel aardbevingen in verschillende magnitude categorieën
-filtered["magnitude_category"] = pd.cut(
-    filtered["magnitude"],
-    bins=[
-        -float("inf"),
-        3,
-        4,
-        5,
-        6,
-        float("inf")
-    ],
-    labels=[
-        "< 3",
-        "3–4",
-        "4–5",
-        "5–6",
-        "6+"
-    ]
-)
-
-category_counts = (
-    filtered["magnitude_category"]
-    .value_counts()
-    .sort_index()
-    .reset_index()
-)
-
-category_counts.columns = [
-    "Magnitude category",
-    "Earthquakes"
-]
-
-
-# Staafdiagram met het aantal aardbevingen per magnitude categorie
-fig_categories = px.bar(
-    category_counts,
-    x="Magnitude category",
-    y="Earthquakes",
-    title="Earthquakes by magnitude category",
-    labels={
-        "Magnitude category": "Magnitude category",
-        "Earthquakes": "Number of earthquakes"
-    }
-)
-
-st.plotly_chart(
-    fig_categories,
-    use_container_width=True
-)
-
-
-# Controleer of er aardbevingen onder magnitude 2.5 in de dataset staan
-below_threshold = (
-    filtered["magnitude"] < 2.5
-).sum()
-
-if below_threshold > 0:
-    st.warning(
-        f"There are {below_threshold} earthquakes "
-        "with a magnitude below 2.5. "
-        "This is unexpected if the original dataset "
-        "is supposed to contain only earthquakes "
-        "with magnitude >= 2.5."
-    )
-
-
-# Analyse van de locaties met de meeste aardbevingen
-st.subheader("🌍 Waar gebeuren de meeste aardbevingen?")
-
-top_places = (
-    filtered["place"]
-    .value_counts()
-    .head(10)
-    .reset_index()
-)
-
-top_places.columns = [
-    "Location",
-    "Earthquakes"
-]
-
-
-# Staafdiagram met de 10 locaties met de meeste aardbevingen
-fig_places = px.bar(
-    top_places,
-    x="Earthquakes",
-    y="Location",
-    orientation="h",
-    title="Top 10 locaties met de meeste aardbevingen",
-    labels={
-        "Earthquakes": "Aantal aardbevingen",
-        "Location": "Locatie"
-    }
-)
-
-st.plotly_chart(
-    fig_places,
-    use_container_width=True
-)
