@@ -182,15 +182,17 @@ with map_col:
     if filtered.empty:
         st.info("No earthquakes match the selected filters.")
     else:
-        if "plate_label" in filtered and filtered["plate_label"].notna().any():
-            st.map(
-                filtered.rename(columns={"latitude": "lat", "longitude": "lon"})[
-                    ["lat", "lon", "plate_label"]
-                ],
+        map_df = filtered.rename(columns={"latitude": "lat", "longitude": "lon"})
+        if "plate_label" in map_df and map_df["plate_label"].notna().any():
+            st.scatter_chart(
+                map_df,
+                x="lon",
+                y="lat",
                 color="plate_label",
+                size="magnitude",
             )
         else:
-            st.map(filtered.rename(columns={"latitude": "lat", "longitude": "lon"})[["lat", "lon"]])
+            st.map(map_df[["lat", "lon"]])
 
 with chart_col:
     st.subheader("Activity over time")
@@ -234,14 +236,7 @@ if "plate_label" in filtered and filtered["plate_label"].notna().any():
         st.bar_chart(boundary_stats["avg_magnitude"])
 
     st.subheader("Magnitude distribution by boundary type")
-    # Box plot built from a stacked dataframe
-    box_data = (
-        filtered.dropna(subset=["plate_label"])
-        .groupby(["plate_label", pd.cut(filtered["magnitude"], bins=20)])
-        .size()
-        .rename("count")
-        .reset_index()
-    )
+
     st.bar_chart(
         filtered.dropna(subset=["plate_label"]),
         x="plate_label",
