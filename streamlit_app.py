@@ -272,9 +272,7 @@ with map_col:
                 get_radius="radius",
                 pickable=True,
                 opacity=1,
-                stroked=True,
-				get_line_color=[30, 30, 30, 255],
-				line_width_min_pixels=2
+                stroked=False,
             )
             layers.append(eq_layer)
 
