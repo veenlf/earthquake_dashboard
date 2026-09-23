@@ -7,6 +7,11 @@ import pandas as pd
 import streamlit as st
 
 
+# Single sheet
+df = pd.read_excel("2.5_month.xlsx")
+df.to_csv("2.5_month.csv", index=False)
+
+
 st.set_page_config(page_title="Earthquake Dashboard", page_icon="🌍", layout="wide")
 
 
