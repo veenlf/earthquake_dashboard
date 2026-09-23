@@ -144,7 +144,7 @@ st.subheader("Recent earthquakes")
 
 columns = [c for c in ["time", "place", "magnitude", "depth_km", "latitude", "longitude"] if c in filtered]
 st.dataframe(filtered.sort_values("time", ascending=False)[columns].head(100), use_container_width=True, hide_index=True)
-# hallo
+
 
 jls_extract_var = st
 jls_extract_var.dataframe(filtered.sort_values("time", ascending=False)[columns].head(100), use_container_width=True, hide_index=True)
