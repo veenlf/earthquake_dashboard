@@ -67,16 +67,24 @@ def load_plates(path: str = "tectonic_plates.csv") -> pd.DataFrame:
     plates = plates.dropna(subset=["geometry"]).copy()
     plates["geometry"] = plates["geometry"].apply(wkt.loads)
 
-    # Convert every geometry (LineString or MultiLineString) into a list of
-    # coordinate paths so pydeck's PathLayer can draw them.
-    def to_paths(geom):
-        if geom.geom_type == "LineString":
-            return [list(geom.coords)]
-        if geom.geom_type == "MultiLineString":
-            return [list(line.coords) for line in geom.geoms]
-        return []
+    # Convert each geometry into a GeoJSON-style Feature so pydeck's
+    # GeoJsonLayer can render it reliably (works for LineString AND
+    # MultiLineString, unlike PathLayer which is picky about format).
+    def to_feature(row):
+        g = row["geometry"]
+        if g.geom_type == "LineString":
+            coords = [list(map(float, c)) for c in g.coords]
+        elif g.geom_type == "MultiLineString":
+            coords = [[list(map(float, c)) for c in line.coords] for line in g.geoms]
+        else:
+            return None
+        return {
+            "type": "Feature",
+            "geometry": {"type": g.geom_type, "coordinates": coords},
+            "properties": {"name": row.get("NAME"), "label": row.get("LABEL")},
+        }
 
-    plates["paths"] = plates["geometry"].apply(to_paths)
+    plates["feature"] = plates.apply(to_feature, axis=1)
     return plates
 
 
@@ -92,13 +100,25 @@ def annotate_with_plates(eq_df: pd.DataFrame, plates_df: pd.DataFrame) -> pd.Dat
         )
 
     geoms = plates_df["geometry"].tolist()
+
+    # Shapely 2.x: STRtree.nearest() returns the geometry, not the index,
+    # so we keep our own list and match on identity.
     tree = STRtree(geoms)
 
     names, labels, dists = [], [], []
     for lon, lat in zip(eq_df["longitude"], eq_df["latitude"]):
         try:
             p = Point(float(lon), float(lat))
-            i = tree.nearest(p)
+            nearest = tree.nearest(p)
+            # Find the index of that geometry in our list
+            i = next((idx for idx, g in enumerate(geoms) if g is nearest), None)
+            if i is None:
+                # Fallback: use distance matrix (slower but safe)
+                idx_arr = tree.query(p) if hasattr(tree, "query") else None
+                if idx_arr is not None and len(idx_arr):
+                    i = int(idx_arr[0])
+                else:
+                    raise ValueError("no nearest found")
             g = geoms[i]
             names.append(plates_df.iloc[i]["NAME"])
             labels.append(plates_df.iloc[i]["LABEL"])
@@ -224,20 +244,26 @@ with map_col:
 
             layers = []
 
-            # Plate boundary lines — drawn first, sits behind the dots
+            # Plate boundary lines — GeoJsonLayer (reliable, sits behind dots)
             if plates is not None:
-                plate_layer = pdk.Layer(
-                    "PathLayer",
-                    data=plates,
-                    get_path="paths",
-                    get_color=[0, 200, 255, 70],
-                    width_units="pixels",
-                    get_width=1.5,
-                    pickable=False,
-                )
-                layers.append(plate_layer)
+                plate_features = [
+                    f for f in plates["feature"].tolist() if f is not None
+                ]
+                if plate_features:
+                    plate_layer = pdk.Layer(
+                        "GeoJsonLayer",
+                        data={"type": "FeatureCollection", "features": plate_features},
+                        stroked=True,
+                        filled=False,
+                        get_line_color=[0, 200, 255, 90],
+                        get_line_width=1500,
+                        line_width_min_pixels=1,
+                        line_width_max_pixels=3,
+                        pickable=False,
+                    )
+                    layers.append(plate_layer)
 
-            # Earthquake dots — drawn second, on top of the lines
+            # Earthquake dots — drawn on top
             eq_layer = pdk.Layer(
                 "ScatterplotLayer",
                 data=map_df,
