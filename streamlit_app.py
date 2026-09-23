@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import plotly.express as px
 import numpy as np
 import pandas as pd
 import streamlit as st
 from shapely import wkt
 from shapely.geometry import Point
 from shapely.strtree import STRtree
+
 
 
 st.set_page_config(page_title="Earthquake Dashboard", page_icon="🌍", layout="wide")
@@ -300,3 +302,152 @@ else:
         use_container_width=True,
         hide_index=True,
     )
+
+
+
+
+# Magnitude analyse
+st.subheader("Magnitude analysis")
+
+col1, col2, col3, col4 = st.columns(4)
+
+col1.metric(
+    "Average magnitude",
+    f"{filtered['magnitude'].mean():.2f}"
+)
+
+col2.metric(
+    "Median magnitude",
+    f"{filtered['magnitude'].median():.2f}"
+)
+
+col3.metric(
+    "Minimum magnitude",
+    f"{filtered['magnitude'].min():.2f}"
+)
+
+col4.metric(
+    "Maximum magnitude",
+    f"{filtered['magnitude'].max():.2f}"
+)
+
+
+# Histogram: laat zien welke magnitudes het vaakst voorkomen
+fig = px.histogram(
+    filtered,
+    x="magnitude",
+    nbins=25,
+    title="Distribution of earthquake magnitudes",
+    labels={
+        "magnitude": "Magnitude",
+        "count": "Number of earthquakes"
+    }
+)
+
+fig.update_layout(
+    xaxis_title="Magnitude",
+    yaxis_title="Number of earthquakes"
+)
+
+st.plotly_chart(fig, use_container_width=True)
+
+
+# Verdeel aardbevingen in verschillende magnitude categorieën
+filtered["magnitude_category"] = pd.cut(
+    filtered["magnitude"],
+    bins=[
+        -float("inf"),
+        3,
+        4,
+        5,
+        6,
+        float("inf")
+    ],
+    labels=[
+        "< 3",
+        "3–4",
+        "4–5",
+        "5–6",
+        "6+"
+    ]
+)
+
+category_counts = (
+    filtered["magnitude_category"]
+    .value_counts()
+    .sort_index()
+    .reset_index()
+)
+
+category_counts.columns = [
+    "Magnitude category",
+    "Earthquakes"
+]
+
+
+# Staafdiagram met het aantal aardbevingen per magnitude categorie
+fig_categories = px.bar(
+    category_counts,
+    x="Magnitude category",
+    y="Earthquakes",
+    title="Earthquakes by magnitude category",
+    labels={
+        "Magnitude category": "Magnitude category",
+        "Earthquakes": "Number of earthquakes"
+    }
+)
+
+st.plotly_chart(
+    fig_categories,
+    use_container_width=True
+)
+
+
+# Controleer of er aardbevingen onder magnitude 2.5 in de dataset staan
+below_threshold = (
+    filtered["magnitude"] < 2.5
+).sum()
+
+if below_threshold > 0:
+    st.warning(
+        f"There are {below_threshold} earthquakes "
+        "with a magnitude below 2.5. "
+        "This is unexpected if the original dataset "
+        "is supposed to contain only earthquakes "
+        "with magnitude >= 2.5."
+    )
+
+
+# Analyse van de locaties met de meeste aardbevingen
+st.subheader("🌍 Waar gebeuren de meeste aardbevingen?")
+
+top_places = (
+    filtered["place"]
+    .value_counts()
+    .head(10)
+    .reset_index()
+)
+
+top_places.columns = [
+    "Location",
+    "Earthquakes"
+]
+
+
+# Staafdiagram met de 10 locaties met de meeste aardbevingen
+fig_places = px.bar(
+    top_places,
+    x="Earthquakes",
+    y="Location",
+    orientation="h",
+    title="Top 10 locaties met de meeste aardbevingen",
+    labels={
+        "Earthquakes": "Aantal aardbevingen",
+        "Location": "Locatie"
+    }
+)
+
+st.plotly_chart(
+    fig_places,
+    use_container_width=True
+)
