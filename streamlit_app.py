@@ -281,6 +281,7 @@ with map_col:
                     layers=layers,
                     initial_view_state=view,
                     tooltip={"text": "{place}\nMag: {magnitude}\n{plate_label}"},
+					map_style="https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
                 )
             )
         else:
