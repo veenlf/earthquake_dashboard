@@ -255,10 +255,10 @@ with map_col:
                         data={"type": "FeatureCollection", "features": plate_features},
                         stroked=True,
                         filled=False,
-                        get_line_color=[0, 200, 255, 90],
-                        get_line_width=1500,
-                        line_width_min_pixels=1,
-                        line_width_max_pixels=3,
+                        get_line_color=[20, 80, 120, 220],
+                        get_line_width=2500,
+                        line_width_min_pixels=2,
+                        line_width_max_pixels=4,
                         pickable=False,
                     )
                     layers.append(plate_layer)
