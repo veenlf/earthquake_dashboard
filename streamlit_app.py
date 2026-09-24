@@ -180,6 +180,7 @@ with st.sidebar:
 
     minimum = float(earthquakes["magnitude"].min())
     maximum = float(earthquakes["magnitude"].max())
+
     min_magnitude = st.slider("Minimum magnitude", 0.0, max(10.0, maximum), minimum, 0.1)
     available_dates = earthquakes["time"].dt.date
     date_range = st.date_input("Date range", (available_dates.min(), available_dates.max()))
@@ -195,7 +196,14 @@ with st.sidebar:
         )
     else:
         max_distance = None
-
+    if "plate_label" in earthquakes.columns:
+        boundary_options= ["All"]+ sorted(earthquakes['plate_label'].dropna().unique().tolist())
+        boundary_type= st.selectbox(
+            "boundary type",
+            boundary_options
+        )
+    else:
+        boundary_type = 'All'
 
 # Apply filters
 
@@ -204,6 +212,8 @@ if isinstance(date_range, (tuple, list)) and len(date_range) == 2:
     filtered = filtered[filtered["time"].dt.date.between(date_range[0], date_range[1])]
 if max_distance is not None and "distance_km" in filtered:
     filtered = filtered[filtered["distance_km"].fillna(np.inf) <= max_distance]
+if boundary_type != 'All':
+    filtered=filtered[filtered['plate_label']== boundary_type]
 
 
 # Metrics
@@ -238,6 +248,11 @@ with map_col:
         unsafe_allow_html=True,
     )
 
+    show_boundaries = st.checkbox(
+    "Show tectonic plate boundaries",
+    value=True
+    )
+
     if filtered.empty:
         st.info("No earthquakes match the selected filters.")
     else:
@@ -253,7 +268,7 @@ with map_col:
             layers = []
 
             # Plate boundary lines — GeoJsonLayer (reliable, sits behind dots)
-            if plates is not None:
+            if show_boundaries and plates is not None:
                 plate_features = [
                     f for f in plates["feature"].tolist() if f is not None
                 ]
