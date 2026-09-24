@@ -149,6 +149,9 @@ def annotate_with_plates(eq_df: pd.DataFrame, plates_df: pd.DataFrame) -> pd.Dat
 # Header
 
 st.title("🌍 Earthquake Dashboard")
+st.markdown(
+    "**Research Question:** What is the relationship between earthquakes and tectonic plate boundaries?"
+)
 st.caption("Explore earthquake activity and how it correlates with tectonic plate boundaries.")
 
 
