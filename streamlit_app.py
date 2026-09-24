@@ -350,19 +350,7 @@ if "plate_label" in filtered and filtered["plate_label"].notna().any():
 
     with b1:
         st.subheader("How do earthquakes differ by boundary type?")
-        display_stats = boundary_stats.rename(columns={
-            "plate_label": "Boundary type",
-            "count": "Number of earthquakes",
-            "avg_magnitude": "Average magnitude",
-            "max_magnitude": "Maximum magnitude",
-            "avg_depth_km": "Average depth (km)",
-            "median_distance_km": "Median distance to boundary (km)"
-        })
-
-        st.dataframe(
-            display_stats,
-            use_container_width=True,
-            hide_index=True)
+        st.dataframe(boundary_stats, use_container_width=True, hide_index=False)
 
     with b2:
         st.subheader("How strong are earthquakes at different boundary types?")
