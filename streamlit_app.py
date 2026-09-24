@@ -114,20 +114,12 @@ def annotate_with_plates(eq_df: pd.DataFrame, plates_df: pd.DataFrame) -> pd.Dat
     for lon, lat in zip(eq_df["longitude"], eq_df["latitude"]):
         try:
             p = Point(float(lon), float(lat))
-            nearest = tree.nearest(p)
-            # Find the index of that geometry in our list
-            i = next((idx for idx, g in enumerate(geoms) if g is nearest), None)
-            if i is None:
-                # Fallback: use distance matrix (slower but safe)
-                idx_arr = tree.query(p) if hasattr(tree, "query") else None
-                if idx_arr is not None and len(idx_arr):
-                    i = int(idx_arr[0])
-                else:
-                    raise ValueError("no nearest found")
+            i = tree.nearest(p)
             g = geoms[i]
+
             names.append(plates_df.iloc[i]["NAME"])
             labels.append(plates_df.iloc[i]["LABEL"])
-            dists.append(p.distance(g))
+            
 
             nearest_point= nearest_points(p,g)[1]
             _,_, distance_m= geod.inv(
@@ -141,7 +133,6 @@ def annotate_with_plates(eq_df: pd.DataFrame, plates_df: pd.DataFrame) -> pd.Dat
         except Exception:
             names.append(None)
             labels.append(None)
-            dists.append(np.nan)
             distances_km.append(np.nan)
 
 
@@ -149,13 +140,12 @@ def annotate_with_plates(eq_df: pd.DataFrame, plates_df: pd.DataFrame) -> pd.Dat
     out = eq_df.assign(
         nearest_plate=names,
         plate_label=labels,
-        distance_deg=dists,
         distance_km= distances_km,
     )
     
     return out
 
-  
+
 # Header
 
 st.title("🌍 Earthquake Dashboard")
@@ -376,8 +366,15 @@ if "plate_label" in filtered and filtered["plate_label"].notna().any():
             range=["#deebf7", "#9ecae1", "#6baed6", "#3182bd", "#08519c"]
         ),
         title="magnitude_group"
+    ),
+    tooltip= [
+        alt.Tooltip("plate_label:N", title= "boundry type"),
+        alt.Tooltip("magnitude_group:N", title= 'magnitude'),
+        alt.Tooltip('count:Q', title= 'number of earthquakes'),
+        alt.Tooltip('percentage:Q', title= 'percentage', format='.1f') 
+    ]
     )
-    )
+
 
     st.altair_chart(chart, use_container_width=True)
 
