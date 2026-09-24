@@ -360,17 +360,17 @@ if "plate_label" in filtered and filtered["plate_label"].notna().any():
             "median_distance_km": "Median distance to boundary (km)"
         })
 
-st.dataframe(
-    display_stats,
-    use_container_width=True,
-    hide_index=True,
-	column_config={
-        "Boundary type": st.column_config.TextColumn(
-            "Boundary type",
-            width="large"
+        st.dataframe(
+            display_stats,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Boundary type": st.column_config.TextColumn(
+                    "Boundary type",
+                    width="large"
+                )
+            }
         )
-    }
-)
 
 
     with b2:
