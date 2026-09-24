@@ -368,10 +368,10 @@ if "plate_label" in filtered and filtered["plate_label"].notna().any():
         title="magnitude_group"
     ),
     tooltip= [
-        alt.Tooltip("plate_label:N", title= "boundry type"),
-        alt.Tooltip("magnitude_group:N", title= 'magnitude'),
-        alt.Tooltip('count:Q', title= 'number of earthquakes'),
-        alt.Tooltip('percentage:Q', title= 'percentage', format='.1f') 
+        alt.Tooltip("plate_label:N", title= "Boundry type"),
+        alt.Tooltip("magnitude_group:N", title= 'Magnitude'),
+        alt.Tooltip('count:Q', title= 'Number of earthquakes'),
+        alt.Tooltip('percentage:Q', title= 'Percentage', format='.1f') 
     ]
     )
 
