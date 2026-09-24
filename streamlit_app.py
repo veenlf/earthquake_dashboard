@@ -184,7 +184,7 @@ with st.sidebar:
     minimum = float(earthquakes["magnitude"].min())
     maximum = float(earthquakes["magnitude"].max())
 
-    min_magnitude = st.slider("Minimum magnitude", 0.0, max(10.0, maximum), minimum, 0.1)
+    min_magnitude = st.slider("Minimum magnitude", 2.05, 6.7, 2.5, 0.1)
     available_dates = earthquakes["time"].dt.date
     date_range = st.date_input("Date range", (available_dates.min(), available_dates.max()))
 
@@ -398,17 +398,9 @@ if "plate_label" in filtered and filtered["plate_label"].notna().any():
 
     st.subheader("Does distance from a plate boundary relate to earthquake depth?")
 
-mag_min, mag_max = st.slider(
-    "Selecteer magnitude bereik",
-    2.5,
-    float(filtered["magnitude"].max()),
-    (2.5, float(filtered["magnitude"].max())),
-    0.1
+scatter_df = filtered.dropna(
+    subset=["distance_km", "depth_km"]
 )
-
-scatter_df = filtered[
-    filtered["magnitude"].between(mag_min, mag_max)
-].dropna(subset=["distance_km", "depth_km"])
 
 st.write(f"Getoonde aardbevingen: {len(scatter_df)}")
 
