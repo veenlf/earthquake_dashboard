@@ -246,8 +246,8 @@ with map_col:
         "<span style='color:#ff6464'>●</span> Convergent &nbsp; "
         "<span style='color:#6496ff'>●</span> Divergent &nbsp; "
         "<span style='color:#ffc850'>●</span> Transform &nbsp; "
-        "<span style='color:#b4b4b4'>●</span> Other &nbsp; "
-        "— <em>dot size = magnitude</em>",
+        "<span style='color:#b4b4b4'>●</span> Other<br>"
+        "● dot size = magnitude",
         unsafe_allow_html=True,
     )
 
@@ -350,7 +350,28 @@ if "plate_label" in filtered and filtered["plate_label"].notna().any():
 
     with b1:
         st.subheader("How do earthquakes differ by boundary type?")
-        st.dataframe(boundary_stats, use_container_width=True)
+        st.subheader("How do earthquakes differ by boundary type?")
+        display_stats = boundary_stats.rename(columns={
+            "plate_label": "Boundary type",
+            "count": "Number of earthquakes",
+            "avg_magnitude": "Average magnitude",
+            "max_magnitude": "Maximum magnitude",
+            "avg_depth_km": "Average depth (km)",
+            "median_distance_km": "Median distance to boundary (km)"
+        })
+
+st.dataframe(
+    display_stats,
+    use_container_width=True,
+    hide_index=True
+	column_config={
+        "Boundary type": st.column_config.TextColumn(
+            "Boundary type",
+            width="large"
+        )
+    }
+)
+
 
     with b2:
         st.subheader("How strong are earthquakes at different boundary types?")
