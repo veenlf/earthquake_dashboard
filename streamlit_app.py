@@ -184,7 +184,7 @@ with st.sidebar:
     minimum = float(earthquakes["magnitude"].min())
     maximum = float(earthquakes["magnitude"].max())
 
-    min_magnitude = st.slider("Minimum magnitude", 2.05, 6.7, 2.5, 0.1)
+    min_magnitude = st.slider("Minimum magnitude", 2.5, 6.7, 2.5, 0.1)
     available_dates = earthquakes["time"].dt.date
     date_range = st.date_input("Date range", (available_dates.min(), available_dates.max()))
 
