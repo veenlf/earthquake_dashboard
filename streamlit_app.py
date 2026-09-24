@@ -350,7 +350,6 @@ if "plate_label" in filtered and filtered["plate_label"].notna().any():
 
     with b1:
         st.subheader("How do earthquakes differ by boundary type?")
-        st.subheader("How do earthquakes differ by boundary type?")
         display_stats = boundary_stats.rename(columns={
             "plate_label": "Boundary type",
             "count": "Number of earthquakes",
@@ -363,15 +362,7 @@ if "plate_label" in filtered and filtered["plate_label"].notna().any():
         st.dataframe(
             display_stats,
             use_container_width=True,
-            hide_index=True,
-            column_config={
-                "Boundary type": st.column_config.TextColumn(
-                    "Boundary type",
-                    width="large"
-                )
-            }
-        )
-
+            hide_index=True)
 
     with b2:
         st.subheader("How strong are earthquakes at different boundary types?")
