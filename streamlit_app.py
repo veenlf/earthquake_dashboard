@@ -363,7 +363,7 @@ if "plate_label" in filtered and filtered["plate_label"].notna().any():
 st.dataframe(
     display_stats,
     use_container_width=True,
-    hide_index=True
+    hide_index=True,
 	column_config={
         "Boundary type": st.column_config.TextColumn(
             "Boundary type",
