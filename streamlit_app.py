@@ -148,7 +148,7 @@ def annotate_with_plates(eq_df: pd.DataFrame, plates_df: pd.DataFrame) -> pd.Dat
 
 # Header
 
-st.title("🌍 Earthquake Dashboard")
+st.title("Earthquake Dashboard")
 st.caption("Explore earthquake activity and how it correlates with tectonic plate boundaries.")
 
 
@@ -379,17 +379,31 @@ if "plate_label" in filtered and filtered["plate_label"].notna().any():
     st.altair_chart(chart, use_container_width=True)
 
     st.subheader("Depth vs. distance to nearest plate boundary")
-    scatter_df = filtered.dropna(subset=["distance_km", "depth_km"])
-    if not scatter_df.empty:
-        st.scatter_chart(
-            scatter_df,
-            x="distance_km",
-            y="depth_km",
-            color="plate_label",
-            size="magnitude",
-        )
-    else:
-        st.info("Not enough data for scatter plot.")
+
+mag_min, mag_max = st.slider(
+    "Selecteer magnitude bereik",
+    2.5,
+    float(filtered["magnitude"].max()),
+    (2.5, float(filtered["magnitude"].max())),
+    0.1
+)
+
+scatter_df = filtered[
+    filtered["magnitude"].between(mag_min, mag_max)
+].dropna(subset=["distance_km", "depth_km"])
+
+st.write(f"Getoonde aardbevingen: {len(scatter_df)}")
+
+if not scatter_df.empty:
+    st.scatter_chart(
+        scatter_df,
+        x="distance_km",
+        y="depth_km",
+        color="plate_label",
+        size="magnitude",
+    )
+else:
+    st.info("Not enough data for scatter plot.")
 
     st.subheader("Are earthquakes clustered near plate boundaries?")
     st.caption("Explore how the frequency of earthquakes change with distance from the nearest plate boundary")
