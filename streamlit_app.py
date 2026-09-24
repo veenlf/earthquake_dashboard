@@ -9,6 +9,8 @@ import pydeck as pdk
 from shapely import wkt
 from shapely.geometry import Point
 from shapely.strtree import STRtree
+from pyproj import Geod 
+from shapely.ops import nearest_points
 
 
 st.set_page_config(page_title="Earthquake Dashboard", page_icon="🌍", layout="wide")
@@ -105,7 +107,9 @@ def annotate_with_plates(eq_df: pd.DataFrame, plates_df: pd.DataFrame) -> pd.Dat
     # so we keep our own list and match on identity.
     tree = STRtree(geoms)
 
-    names, labels, dists = [], [], []
+    names, labels, dists, distances_km = [], [], [], []
+    geod = Geod(ellps="WGS84")
+
     for lon, lat in zip(eq_df["longitude"], eq_df["latitude"]):
         try:
             p = Point(float(lon), float(lat))
@@ -123,21 +127,34 @@ def annotate_with_plates(eq_df: pd.DataFrame, plates_df: pd.DataFrame) -> pd.Dat
             names.append(plates_df.iloc[i]["NAME"])
             labels.append(plates_df.iloc[i]["LABEL"])
             dists.append(p.distance(g))
+
+            nearest_point= nearest_points(p,g)[1]
+            _,_, distance_m= geod.inv(
+                p.x,
+                p.y,
+                nearest_point.x,
+                nearest_point.y
+            )
+            distances_km.append(distance_m/1000)
+
         except Exception:
             names.append(None)
             labels.append(None)
             dists.append(np.nan)
+            distances_km.append(np.nan)
+
+
 
     out = eq_df.assign(
         nearest_plate=names,
         plate_label=labels,
         distance_deg=dists,
+        distance_km= distances_km,
     )
-    # Approximate km (shrinks with latitude)
-    out["distance_km"] = out["distance_deg"] * 111 * np.cos(np.radians(out["latitude"]))
+    
     return out
 
-
+  
 # Header
 
 st.title("🌍 Earthquake Dashboard")
@@ -281,7 +298,7 @@ with map_col:
                     layers=layers,
                     initial_view_state=view,
                     tooltip={"text": "{place}\nMag: {magnitude}\n{plate_label}"},
-					map_style="https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
+                    map_style="https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
                 )
             )
         else:
