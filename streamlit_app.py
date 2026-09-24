@@ -347,12 +347,24 @@ if "plate_label" in filtered and filtered["plate_label"].notna().any():
         st.subheader("Average magnitude by boundary type")
         st.bar_chart(boundary_stats["avg_magnitude"])
 
+
+    mag_df= filtered.dropna(subset=["plate_label", "magnitude"]).copy()
+    mag_df["magnitude_group"]=pd.cut(
+            mag_df['magnitude'],
+            bins= [0,3,4,5,6,7,8,9, np.inf],
+            labels=['<3','3-4','4-5','5-6','6-7','7-8','8-9', '9+']
+        )
+    
+    mag_counts= (
+        mag_df.groupby(['plate_label', 'magnitude_group'], observed=True).size().reset_index(name= 'count')
+        )
     st.subheader("Magnitude distribution by boundary type")
 
+
     st.bar_chart(
-        filtered.dropna(subset=["plate_label"]),
-        x="plate_label",
-        y="magnitude",
+        mag_counts,
+        x="magnitude_group",
+        y="count",
         color="plate_label",
     )
 
