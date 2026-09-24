@@ -391,14 +391,69 @@ if "plate_label" in filtered and filtered["plate_label"].notna().any():
     else:
         st.info("Not enough data for scatter plot.")
 
-    st.subheader("Are quakes clustered near boundaries?")
-    st.caption("Most earthquakes should fall within ~200 km of a plate boundary.")
-    hist = pd.cut(
+    st.subheader("Are earthquakes clustered near plate boundaries?")
+    st.caption("Explore how the frequency of earthquakes change with distance from the nearest plate boundary")
+    within_200 = (filtered["distance_km"] <= 200).mean() * 100
+
+    st.metric(
+    "Earthquakes within 200 km of a plate boundary",
+    f"{within_200:.1f}%"
+    )
+
+    
+    distance_order = [
+    "0-50",
+    "50-100",
+    "100-200",
+    "200-500",
+    "500-1k",
+    "1k-2k",
+    ">2k"
+    ]
+
+# Deel iedere aardbeving in een afstandsgroep in
+hist_df = pd.DataFrame({
+    "distance_group": pd.cut(
         filtered["distance_km"],
         bins=[0, 50, 100, 200, 500, 1000, 2000, np.inf],
-        labels=["0–50", "50–100", "100–200", "200–500", "500–1k", "1k–2k", ">2k"],
-    ).value_counts().sort_index()
-    st.bar_chart(hist)
+        labels=distance_order,
+        include_lowest=True
+    )
+})
+
+# Tel hoeveel aardbevingen in iedere groep zitten
+hist_df = (
+    hist_df["distance_group"]
+    .value_counts(sort=False)
+    .rename_axis("distance_group")
+    .reset_index(name="count")
+)
+
+distance_chart = alt.Chart(hist_df).mark_bar().encode(
+    x=alt.X(
+        "distance_group:N",
+        title="Distance to nearest plate boundary (km)",
+        sort=["0-50", "50-100", "100-200", "200-500", "500-1k", "1k-2k", ">2k"]
+        ),
+
+        y=alt.Y(
+        "count:Q",
+        title="Number of earthquakes"
+        ),
+
+        tooltip=[
+        alt.Tooltip(
+            "distance_group:N",
+            title="Distance to plate boundary"
+        ),
+        alt.Tooltip(
+            "count:Q",
+            title="Number of earthquakes"
+        )
+        ]
+    )
+
+st.altair_chart(distance_chart, use_container_width=True)
 
 
 # Recent earthquakes table
