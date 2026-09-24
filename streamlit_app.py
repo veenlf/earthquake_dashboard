@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 import pydeck as pdk
+import altair as alt
 from shapely import wkt
 from shapely.geometry import Point
 from shapely.strtree import STRtree
@@ -358,15 +359,27 @@ if "plate_label" in filtered and filtered["plate_label"].notna().any():
     mag_counts= (
         mag_df.groupby(['plate_label', 'magnitude_group'], observed=True).size().reset_index(name= 'count')
         )
+    mag_counts['percentage']= (
+        mag_counts['count']/ mag_counts.groupby( "plate_label")['count'].transform('sum') *100
+    )
+
     st.subheader("Magnitude distribution by boundary type")
 
 
-    st.bar_chart(
-        mag_counts,
-        x="magnitude_group",
-        y="count",
-        color="plate_label",
+    chart = alt.Chart(mag_counts).mark_bar().encode(
+    x=alt.X("plate_label:N", title="plate_label", axis=alt.Axis(labelAngle=-45, labelLimit=250)),
+    y=alt.Y("percentage:Q", title="percentage of earthquakes",),
+    color=alt.Color(
+        "magnitude_group:N",
+        scale=alt.Scale(
+            domain=["<3", "3-4", "4-5", "5-6", "6-7"],
+            range=["#deebf7", "#9ecae1", "#6baed6", "#3182bd", "#08519c"]
+        ),
+        title="magnitude_group"
     )
+    )
+
+    st.altair_chart(chart, use_container_width=True)
 
     st.subheader("Depth vs. distance to nearest plate boundary")
     scatter_df = filtered.dropna(subset=["distance_km", "depth_km"])
