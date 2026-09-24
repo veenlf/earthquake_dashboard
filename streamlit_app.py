@@ -149,6 +149,9 @@ def annotate_with_plates(eq_df: pd.DataFrame, plates_df: pd.DataFrame) -> pd.Dat
 # Header
 
 st.title("🌍 Earthquake Dashboard")
+st.markdown(
+    "**Research Question:** What is the relationship between earthquakes and tectonic plate boundaries?"
+)
 st.caption("Explore earthquake activity and how it correlates with tectonic plate boundaries.")
 
 
@@ -236,7 +239,7 @@ else:
 map_col, chart_col = st.columns([1.25, 1])
 
 with map_col:
-    st.subheader("Earthquake locations")
+    st.subheader("Where do earthquakes occur?")
 
     # Legend
     st.markdown(
@@ -261,7 +264,7 @@ with map_col:
             map_df["color"] = map_df["plate_label"].map(PLATE_COLORS).apply(
                 lambda c: c if isinstance(c, list) else DEFAULT_COLOR
             )
-            map_df["radius"] = map_df["magnitude"].clip(lower=1) * 12000
+            map_df["radius"] = map_df["magnitude"].clip(lower=1) * 8000
 
             view = pdk.ViewState(latitude=10, longitude=0, zoom=1, pitch=0)
 
@@ -313,7 +316,7 @@ with map_col:
             )
 
 with chart_col:
-    st.subheader("Activity over time")
+    st.subheader("When do earthquakes occur?")
     if filtered.empty:
         st.info("No data to plot.")
     else:
@@ -328,7 +331,7 @@ with chart_col:
 
 if "plate_label" in filtered and filtered["plate_label"].notna().any():
     st.divider()
-    st.header("🌐 Correlation with tectonic plate boundaries")
+    st.header("Earthquakes and tectonic plate boundaries")
 
     boundary_stats = (
         filtered.groupby("plate_label")
@@ -346,11 +349,11 @@ if "plate_label" in filtered and filtered["plate_label"].notna().any():
     b1, b2 = st.columns([1, 1])
 
     with b1:
-        st.subheader("Stats by boundary type")
+        st.subheader("How do earthquakes differ by boundary type?")
         st.dataframe(boundary_stats, use_container_width=True)
 
     with b2:
-        st.subheader("Average magnitude by boundary type")
+        st.subheader("How strong are earthquakes at different boundary types?")
         st.bar_chart(boundary_stats["avg_magnitude"])
 
 
@@ -368,7 +371,7 @@ if "plate_label" in filtered and filtered["plate_label"].notna().any():
         mag_counts['count']/ mag_counts.groupby( "plate_label")['count'].transform('sum') *100
     )
 
-    st.subheader("Magnitude distribution by boundary type")
+    st.subheader("How are earthquake magnitudes distributed by boundary type?")
 
 
     chart = alt.Chart(mag_counts).mark_bar().encode(
@@ -393,7 +396,7 @@ if "plate_label" in filtered and filtered["plate_label"].notna().any():
 
     st.altair_chart(chart, use_container_width=True)
 
-    st.subheader("Depth vs. distance to nearest plate boundary")
+    st.subheader("Does distance from a plate boundary relate to earthquake depth?")
 
 mag_min, mag_max = st.slider(
     "Selecteer magnitude bereik",
@@ -420,7 +423,7 @@ if not scatter_df.empty:
 else:
     st.info("Not enough data for scatter plot.")
 
-    st.subheader("Are quakes clustered near boundaries?")
+    st.subheader("How close are earthquakes to plate boundaries?")
     st.caption("Most earthquakes should fall within ~200 km of a plate boundary.")
     hist = pd.cut(
         filtered["distance_km"],
