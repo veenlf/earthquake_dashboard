@@ -4,3 +4,4 @@ numpy
 shapely
 pydeck
 plotly
+pyproj
