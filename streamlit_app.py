@@ -246,8 +246,7 @@ with map_col:
             map_df["color"] = map_df["plate_label"].map(PLATE_COLORS).apply(
                 lambda c: c if isinstance(c, list) else DEFAULT_COLOR
             )
-			map_df = map_df[map_df["magnitude"] >= 2.5].copy()
-            map_df["radius"] = (map_df["magnitude"] - 2) * 12000
+            map_df["radius"] = map_df["magnitude"].clip(lower=1) * 8000
 
             view = pdk.ViewState(latitude=10, longitude=0, zoom=1, pitch=0)
 
