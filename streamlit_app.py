@@ -10,13 +10,14 @@ import altair as alt
 from shapely import wkt
 from shapely.geometry import Point
 from shapely.strtree import STRtree
-from pyproj import Geod
+from pyproj import Geod 
 from shapely.ops import nearest_points
 
 
 st.set_page_config(page_title="Earthquake Dashboard", page_icon="🌍", layout="wide")
 
 
+# Colors for each boundary type
 PLATE_COLORS = {
     "Convergent Boundary": [255, 100, 100, 180],
     "Divergent Boundary":  [100, 150, 255, 180],
@@ -26,8 +27,11 @@ PLATE_COLORS = {
 DEFAULT_COLOR = [150, 150, 150, 180]
 
 
+# Data loaders
+
 @st.cache_data
 def demo_data() -> pd.DataFrame:
+    """Fallback demo data if nothing else loads."""
     rng = np.random.default_rng(42)
     count = 250
     return pd.DataFrame(
@@ -44,6 +48,7 @@ def demo_data() -> pd.DataFrame:
 
 @st.cache_data
 def load_csv(file) -> pd.DataFrame:
+    """Load a USGS-style earthquake CSV (uploaded file OR path)."""
     data = pd.read_csv(file).rename(
         columns={"mag": "magnitude", "lat": "latitude", "lon": "longitude", "depth": "depth_km"}
     )
@@ -53,16 +58,21 @@ def load_csv(file) -> pd.DataFrame:
         raise ValueError(f"Missing columns: {', '.join(sorted(missing))}")
     if "time" not in data:
         data["time"] = pd.Timestamp.today().normalize()
+    # Force UTC-naive so resample/date ops work cleanly
     data["time"] = pd.to_datetime(data["time"], errors="coerce", utc=True).dt.tz_localize(None)
     return data.dropna(subset=["time", *required])
 
 
 @st.cache_data
 def load_plates(path: str = "tectonic_plates.csv") -> pd.DataFrame:
+    """Load tectonic plates CSV and parse WKT geometry strings."""
     plates = pd.read_csv(path)
     plates = plates.dropna(subset=["geometry"]).copy()
     plates["geometry"] = plates["geometry"].apply(wkt.loads)
 
+    # Convert each geometry into a GeoJSON-style Feature so pydeck's
+    # GeoJsonLayer can render it reliably (works for LineString AND
+    # MultiLineString, unlike PathLayer which is picky about format).
     def to_feature(row):
         g = row["geometry"]
         if g.geom_type == "LineString":
@@ -83,6 +93,7 @@ def load_plates(path: str = "tectonic_plates.csv") -> pd.DataFrame:
 
 @st.cache_data
 def annotate_with_plates(eq_df: pd.DataFrame, plates_df: pd.DataFrame) -> pd.DataFrame:
+    """Attach the nearest plate boundary info to every earthquake."""
     if eq_df.empty:
         return eq_df.assign(
             nearest_plate=pd.Series(dtype="object"),
@@ -92,41 +103,50 @@ def annotate_with_plates(eq_df: pd.DataFrame, plates_df: pd.DataFrame) -> pd.Dat
         )
 
     geoms = plates_df["geometry"].tolist()
-    geom_to_idx = {geom: idx for idx, geom in enumerate(geoms)}
 
+    # Shapely 2.x: STRtree.nearest() returns the geometry, not the index,
+    # so we keep our own list and match on identity.
     tree = STRtree(geoms)
 
-    names, labels, distances_km = [], [], []
+    names, labels, dists, distances_km = [], [], [], []
     geod = Geod(ellps="WGS84")
 
     for lon, lat in zip(eq_df["longitude"], eq_df["latitude"]):
         try:
             p = Point(float(lon), float(lat))
-            nearest_geom = tree.nearest(p)
-            idx = geom_to_idx[nearest_geom]
+            i = tree.nearest(p)
+            g = geoms[i]
 
-            names.append(plates_df.iloc[idx]["NAME"])
-            labels.append(plates_df.iloc[idx]["LABEL"])
+            names.append(plates_df.iloc[i]["NAME"])
+            labels.append(plates_df.iloc[i]["LABEL"])
+            
 
-            nearest_point = nearest_points(p, nearest_geom)[1]
-            _, _, distance_m = geod.inv(
-                p.x, p.y,
-                nearest_point.x, nearest_point.y
+            nearest_point= nearest_points(p,g)[1]
+            _,_, distance_m= geod.inv(
+                p.x,
+                p.y,
+                nearest_point.x,
+                nearest_point.y
             )
-            distances_km.append(distance_m / 1000)
+            distances_km.append(distance_m/1000)
 
         except Exception:
             names.append(None)
             labels.append(None)
             distances_km.append(np.nan)
 
+
+
     out = eq_df.assign(
         nearest_plate=names,
         plate_label=labels,
-        distance_km=distances_km,
+        distance_km= distances_km,
     )
+    
     return out
 
+
+# Header
 
 st.title("🌍 Earthquake Dashboard")
 st.markdown(
@@ -134,6 +154,8 @@ st.markdown(
 )
 st.caption("Explore earthquake activity and how it correlates with tectonic plate boundaries.")
 
+
+# Sidebar: upload + filters
 
 with st.sidebar:
     st.header("Filters")
@@ -154,6 +176,7 @@ with st.sidebar:
         plates = None
         st.warning("tectonic_plates.csv not found — plate correlation disabled.")
 
+    # Annotate earthquakes with nearest plate boundary (cached)
     if plates is not None:
         with st.spinner("Matching earthquakes to plate boundaries…"):
             earthquakes = annotate_with_plates(earthquakes, plates)
@@ -165,6 +188,7 @@ with st.sidebar:
     available_dates = earthquakes["time"].dt.date
     date_range = st.date_input("Date range", (available_dates.min(), available_dates.max()))
 
+    # Optional: filter to quakes close to a boundary
     if plates is not None:
         max_distance = st.slider(
             "Max distance to plate boundary (km)",
@@ -175,43 +199,49 @@ with st.sidebar:
         )
     else:
         max_distance = None
-
     if "plate_label" in earthquakes.columns:
-        boundary_options = ["All"] + sorted(earthquakes['plate_label'].dropna().unique().tolist())
-        boundary_type = st.selectbox("Boundary type", boundary_options)
+        boundary_options= ["All"]+ sorted(earthquakes['plate_label'].dropna().unique().tolist())
+        boundary_type= st.selectbox(
+            "boundary type",
+            boundary_options
+        )
     else:
         boundary_type = 'All'
 
+# Apply filters
 
 filtered = earthquakes[earthquakes["magnitude"] >= min_magnitude].copy()
 if isinstance(date_range, (tuple, list)) and len(date_range) == 2:
     filtered = filtered[filtered["time"].dt.date.between(date_range[0], date_range[1])]
-if max_distance is not None and "distance_km" in filtered.columns:
+if max_distance is not None and "distance_km" in filtered:
     filtered = filtered[filtered["distance_km"].fillna(np.inf) <= max_distance]
-if boundary_type != 'All' and "plate_label" in filtered.columns:
-    filtered = filtered[filtered['plate_label'] == boundary_type]
+if boundary_type != 'All':
+    filtered=filtered[filtered['plate_label']== boundary_type]
 
+
+# Metrics
 
 col1, col2, col3, col4 = st.columns(4)
 col1.metric("Earthquakes", f"{len(filtered):,}")
 col2.metric("Largest magnitude", f"{filtered.magnitude.max():.1f}" if len(filtered) else "—")
-
-if "depth_km" in filtered.columns and len(filtered):
-    col3.metric("Average depth", f"{filtered['depth_km'].mean():.1f} km")
-else:
-    col3.metric("Average depth", "—")
-
-if "distance_km" in filtered.columns and len(filtered):
-    col4.metric("Median dist. to boundary", f"{filtered['distance_km'].median():.0f} km")
+col3.metric(
+    "Average depth",
+    f"{filtered.depth_km.mean():.1f} km" if "depth_km" in filtered and len(filtered) else "—",
+)
+if "distance_km" in filtered and len(filtered):
+    col4.metric("Median dist. to boundary", f"{filtered.distance_km.median():.0f} km")
 else:
     col4.metric("Median dist. to boundary", "—")
 
+
+# Map + activity over time
 
 map_col, chart_col = st.columns([1.25, 1])
 
 with map_col:
     st.subheader("Where do earthquakes occur?")
 
+    # Legend
     st.markdown(
         "<span style='color:#ff6464'>●</span> Convergent &nbsp; "
         "<span style='color:#6496ff'>●</span> Divergent &nbsp; "
@@ -221,23 +251,30 @@ with map_col:
         unsafe_allow_html=True,
     )
 
-    show_boundaries = st.checkbox("Show tectonic plate boundaries", value=True)
+    show_boundaries = st.checkbox(
+    "Show tectonic plate boundaries",
+    value=True
+    )
 
     if filtered.empty:
         st.info("No earthquakes match the selected filters.")
     else:
         map_df = filtered.dropna(subset=["latitude", "longitude"]).copy()
-        if "plate_label" in map_df.columns and map_df["plate_label"].notna().any():
+        if "plate_label" in map_df and map_df["plate_label"].notna().any():
             map_df["color"] = map_df["plate_label"].map(PLATE_COLORS).apply(
                 lambda c: c if isinstance(c, list) else DEFAULT_COLOR
             )
             map_df["radius"] = map_df["magnitude"].clip(lower=1) * 8000
 
             view = pdk.ViewState(latitude=10, longitude=0, zoom=1, pitch=0)
+
             layers = []
 
+            # Plate boundary lines — GeoJsonLayer (reliable, sits behind dots)
             if show_boundaries and plates is not None:
-                plate_features = [f for f in plates["feature"].tolist() if f is not None]
+                plate_features = [
+                    f for f in plates["feature"].tolist() if f is not None
+                ]
                 if plate_features:
                     plate_layer = pdk.Layer(
                         "GeoJsonLayer",
@@ -252,6 +289,7 @@ with map_col:
                     )
                     layers.append(plate_layer)
 
+            # Earthquake dots — drawn on top
             eq_layer = pdk.Layer(
                 "ScatterplotLayer",
                 data=map_df,
@@ -273,32 +311,37 @@ with map_col:
                 )
             )
         else:
-            st.map(map_df.rename(columns={"latitude": "lat", "longitude": "lon"})[["lat", "lon"]])
+            st.map(
+                map_df.rename(columns={"latitude": "lat", "longitude": "lon"})[["lat", "lon"]]
+            )
 
 with chart_col:
     st.subheader("When do earthquakes occur?")
     if filtered.empty:
         st.info("No data to plot.")
     else:
-        st.line_chart(filtered.set_index("time").resample("D").size().rename("earthquakes"))
+        st.line_chart(
+            filtered.set_index("time").resample("D").size().rename("earthquakes")
+        )
 
 
-if "plate_label" in filtered.columns and filtered["plate_label"].notna().any():
+
+# Plate boundary correlation
+
+
+if "plate_label" in filtered and filtered["plate_label"].notna().any():
     st.divider()
     st.header("Earthquakes and tectonic plate boundaries")
 
-    agg_dict = {
-        "count": ("magnitude", "size"),
-        "avg_magnitude": ("magnitude", "mean"),
-        "max_magnitude": ("magnitude", "max"),
-        "median_distance_km": ("distance_km", "median"),
-    }
-    if "depth_km" in filtered.columns:
-        agg_dict["avg_depth_km"] = ("depth_km", "mean")
-
     boundary_stats = (
         filtered.groupby("plate_label")
-        .agg(**agg_dict)
+        .agg(
+            count=("magnitude", "size"),
+            avg_magnitude=("magnitude", "mean"),
+            max_magnitude=("magnitude", "max"),
+            avg_depth_km=("depth_km", "mean") if "depth_km" in filtered else ("magnitude", "size"),
+            median_distance_km=("distance_km", "median"),
+        )
         .round(2)
         .sort_values("count", ascending=False)
     )
@@ -311,95 +354,97 @@ if "plate_label" in filtered.columns and filtered["plate_label"].notna().any():
 
     with b2:
         st.subheader("How strong are earthquakes at different boundary types?")
-        box_chart = alt.Chart(filtered.dropna(subset=["plate_label", "magnitude"])).mark_boxplot().encode(
-            x=alt.X("plate_label:N", title="Boundary Type", axis=alt.Axis(labelAngle=-45)),
-            y=alt.Y("magnitude:Q", title="Magnitude"),
-            color=alt.Color("plate_label:N", legend=None)
-        ).properties(height=300)
-        st.altair_chart(box_chart, use_container_width=True)
+        st.bar_chart(boundary_stats["avg_magnitude"])
 
 
-    mag_df = filtered.dropna(subset=["plate_label", "magnitude"]).copy()
-    mag_df["magnitude_group"] = pd.cut(
-        mag_df['magnitude'],
-        bins=[0, 3, 4, 5, 6, 7, 8, 9, np.inf],
-        labels=['<3', '3-4', '4-5', '5-6', '6-7', '7-8', '8-9', '9+']
-    )
-
-    mag_counts = (
-        mag_df.groupby(['plate_label', 'magnitude_group'], observed=True).size().reset_index(name='count')
-    )
-    mag_counts['percentage'] = (
-        mag_counts['count'] / mag_counts.groupby("plate_label")['count'].transform('sum') * 100
+    mag_df= filtered.dropna(subset=["plate_label", "magnitude"]).copy()
+    mag_df["magnitude_group"]=pd.cut(
+            mag_df['magnitude'],
+            bins= [0,3,4,5,6,7,8,9, np.inf],
+            labels=['<3','3-4','4-5','5-6','6-7','7-8','8-9', '9+']
+        )
+    
+    mag_counts= (
+        mag_df.groupby(['plate_label', 'magnitude_group'], observed=True).size().reset_index(name= 'count')
+        )
+    mag_counts['percentage']= (
+        mag_counts['count']/ mag_counts.groupby( "plate_label")['count'].transform('sum') *100
     )
 
     st.subheader("How are earthquake magnitudes distributed by boundary type?")
 
+
     chart = alt.Chart(mag_counts).mark_bar().encode(
-        x=alt.X("plate_label:N", title="plate_label", axis=alt.Axis(labelAngle=-45, labelLimit=250)),
-        y=alt.Y("percentage:Q", title="percentage of earthquakes"),
-        color=alt.Color(
-            "magnitude_group:N",
-            scale=alt.Scale(
-                domain=["<3", "3-4", "4-5", "5-6", "6-7"],
-                range=["#deebf7", "#9ecae1", "#6baed6", "#3182bd", "#08519c"]
-            ),
-            title="magnitude_group"
+    x=alt.X("plate_label:N", title="plate_label", axis=alt.Axis(labelAngle=-45, labelLimit=250)),
+    y=alt.Y("percentage:Q", title="percentage of earthquakes",),
+    color=alt.Color(
+        "magnitude_group:N",
+        scale=alt.Scale(
+            domain=["<3", "3-4", "4-5", "5-6", "6-7"],
+            range=["#deebf7", "#9ecae1", "#6baed6", "#3182bd", "#08519c"]
         ),
-        tooltip=[
-            alt.Tooltip("plate_label:N", title="boundary type"),
-            alt.Tooltip("magnitude_group:N", title='magnitude'),
-            alt.Tooltip('count:Q', title='number of earthquakes'),
-            alt.Tooltip('percentage:Q', title='percentage', format='.1f')
-        ]
+        title="magnitude_group"
+    ),
+    tooltip= [
+        alt.Tooltip("plate_label:N", title= "boundry type"),
+        alt.Tooltip("magnitude_group:N", title= 'magnitude'),
+        alt.Tooltip('count:Q', title= 'number of earthquakes'),
+        alt.Tooltip('percentage:Q', title= 'percentage', format='.1f') 
+    ]
     )
+
 
     st.altair_chart(chart, use_container_width=True)
 
     st.subheader("Does distance from a plate boundary relate to earthquake depth?")
 
-    scatter_df = filtered.dropna(subset=["distance_km", "depth_km"])
+scatter_df = filtered.dropna(
+    subset=["distance_km", "depth_km"]
+)
 
-    st.write(f"Displayed earthquakes: {len(scatter_df)}")
+st.write(f"Getoonde aardbevingen: {len(scatter_df)}")
 
-    if not scatter_df.empty:
-        st.scatter_chart(
-            scatter_df,
-            x="distance_km",
-            y="depth_km",
-            color="plate_label",
-            size="magnitude",
-            opacity=0.6,
-        )
-    else:
-        st.info("Not enough data for scatter plot.")
+if not scatter_df.empty:
+    st.scatter_chart(
+        scatter_df,
+        x="distance_km",
+        y="depth_km",
+        color="plate_label",
+        size="magnitude",
+    )
+else:
+    st.info("Not enough data for scatter plot.")
 
     st.subheader("How close are earthquakes to plate boundaries?")
     st.caption("Most earthquakes should fall within ~200 km of a plate boundary.")
-    if not filtered.empty and "distance_km" in filtered.columns:
-        dist_data = filtered["distance_km"].dropna()
-        if not dist_data.empty:
-            hist = pd.cut(
-                dist_data,
-                bins=[0, 50, 100, 200, 500, 1000, 2000, np.inf],
-                labels=["0–50", "50–100", "100–200", "200–500", "500–1k", "1k–2k", ">2k"],
-            ).value_counts().sort_index()
-            st.bar_chart(hist)
-        else:
-            st.info("No distance data available for histogram.")
-    else:
-        st.info("Distance data not available.")
+    hist = pd.cut(
+        filtered["distance_km"],
+        bins=[0, 50, 100, 200, 500, 1000, 2000, np.inf],
+        labels=["0–50", "50–100", "100–200", "200–500", "500–1k", "1k–2k", ">2k"],
+    ).value_counts().sort_index()
+    st.bar_chart(hist)
+
+
+# Recent earthquakes table
 
 
 st.divider()
 st.subheader("Recent earthquakes")
 
 columns = [
-    c for c in [
-        "time", "place", "magnitude", "depth_km",
-        "latitude", "longitude", "nearest_plate",
-        "plate_label", "distance_km",
-    ] if c in filtered.columns
+    c
+    for c in [
+        "time",
+        "place",
+        "magnitude",
+        "depth_km",
+        "latitude",
+        "longitude",
+        "nearest_plate",
+        "plate_label",
+        "distance_km",
+    ]
+    if c in filtered
 ]
 
 if filtered.empty:
