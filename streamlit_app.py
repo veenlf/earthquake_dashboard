@@ -187,24 +187,42 @@ with st.sidebar:
     if "plate_label" in earthquakes.columns:
         earthquakes["plate_label_nl"] = earthquakes["plate_label"].map(PLATE_LABELS_NL).fillna(earthquakes["plate_label"])
 
-    minimum = float(earthquakes["magnitude"].min())
-    maximum = float(earthquakes["magnitude"].max())
+    # DYNAMIC FILTERS
+    min_mag_data = float(earthquakes["magnitude"].min())
+    max_mag_data = float(earthquakes["magnitude"].max())
 
-    min_magnitude = st.slider("Minimale magnitude", 2.5, 6.7, 2.5, 0.1)
+    min_magnitude = st.slider(
+        "Minimale magnitude",
+        min_value=min_mag_data,
+        max_value=max_mag_data,
+        value=min_mag_data,
+        step=0.1,
+    )
+
     available_dates = earthquakes["time"].dt.date
-    date_range = st.date_input("Datumbereik", (available_dates.min(), available_dates.max()))
+    min_date_data = available_dates.min()
+    max_date_data = available_dates.max()
+
+    date_range = st.date_input(
+        "Datumbereik",
+        value=(min_date_data, max_date_data),
+        min_value=min_date_data,
+        max_value=max_date_data,
+    )
 
     # Optional: filter to quakes close to a boundary
     if plates is not None:
+        max_dist_data = float(earthquakes["distance_km"].max()) if "distance_km" in earthquakes.columns else 3000.0
         max_distance = st.slider(
             "Maximale afstand tot plaatgrens (km)",
-            min_value=0,
-            max_value=3000,
-            value=3000,
-            step=50,
+            min_value=0.0,
+            max_value=max_dist_data,
+            value=max_dist_data,
+            step=50.0,
         )
     else:
         max_distance = None
+
     if "plate_label_nl" in earthquakes.columns:
         boundary_options = ["Alle"] + sorted(earthquakes['plate_label_nl'].dropna().unique().tolist())
         boundary_type_nl = st.selectbox(
