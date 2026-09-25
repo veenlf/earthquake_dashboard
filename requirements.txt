@@ -5,3 +5,4 @@ shapely
 pydeck
 plotly
 pyproj
+altair
