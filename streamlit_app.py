@@ -14,7 +14,7 @@ from pyproj import Geod
 from shapely.ops import nearest_points
 
 
-st.set_page_config(page_title="Earthquake Dashboard", page_icon="🌍", layout="wide")
+st.set_page_config(page_title="Aardbevingen Dashboard", page_icon="🌍", layout="wide")
 
 
 # Colors for each boundary type
@@ -55,7 +55,7 @@ def load_csv(file) -> pd.DataFrame:
     required = {"latitude", "longitude", "magnitude"}
     missing = required - set(data.columns)
     if missing:
-        raise ValueError(f"Missing columns: {', '.join(sorted(missing))}")
+        raise ValueError(f"Ontbrekende kolommen: {', '.join(sorted(missing))}")
     if "time" not in data:
         data["time"] = pd.Timestamp.today().normalize()
     # Force UTC-naive so resample/date ops work cleanly
@@ -70,9 +70,6 @@ def load_plates(path: str = "tectonic_plates.csv") -> pd.DataFrame:
     plates = plates.dropna(subset=["geometry"]).copy()
     plates["geometry"] = plates["geometry"].apply(wkt.loads)
 
-    # Convert each geometry into a GeoJSON-style Feature so pydeck's
-    # GeoJsonLayer can render it reliably (works for LineString AND
-    # MultiLineString, unlike PathLayer which is picky about format).
     def to_feature(row):
         g = row["geometry"]
         if g.geom_type == "LineString":
@@ -103,9 +100,6 @@ def annotate_with_plates(eq_df: pd.DataFrame, plates_df: pd.DataFrame) -> pd.Dat
         )
 
     geoms = plates_df["geometry"].tolist()
-
-    # Shapely 2.x: STRtree.nearest() returns the geometry, not the index,
-    # so we keep our own list and match on identity.
     tree = STRtree(geoms)
 
     names, labels, dists, distances_km = [], [], [], []
@@ -119,28 +113,25 @@ def annotate_with_plates(eq_df: pd.DataFrame, plates_df: pd.DataFrame) -> pd.Dat
 
             names.append(plates_df.iloc[i]["NAME"])
             labels.append(plates_df.iloc[i]["LABEL"])
-            
 
-            nearest_point= nearest_points(p,g)[1]
-            _,_, distance_m= geod.inv(
+            nearest_point = nearest_points(p, g)[1]
+            _, _, distance_m = geod.inv(
                 p.x,
                 p.y,
                 nearest_point.x,
                 nearest_point.y
             )
-            distances_km.append(distance_m/1000)
+            distances_km.append(distance_m / 1000)
 
         except Exception:
             names.append(None)
             labels.append(None)
             distances_km.append(np.nan)
 
-
-
     out = eq_df.assign(
         nearest_plate=names,
         plate_label=labels,
-        distance_km= distances_km,
+        distance_km=distances_km,
     )
     
     return out
@@ -148,18 +139,18 @@ def annotate_with_plates(eq_df: pd.DataFrame, plates_df: pd.DataFrame) -> pd.Dat
 
 # Header
 
-st.title("🌍 Earthquake Dashboard")
+st.title("🌍 Aardbevingen Dashboard")
 st.markdown(
-    "**Research Question:** What is the relationship between earthquakes and tectonic plate boundaries?"
+    "**Onderzoeksvraag:** Wat is de relatie tussen aardbevingen en tectonische plaatgrenzen?"
 )
-st.caption("Explore earthquake activity and how it correlates with tectonic plate boundaries.")
+st.caption("Verken aardbevingsactiviteit en hoe deze samenhangt met tectonische plaatgrenzen.")
 
 
 # Sidebar: upload + filters
 
 with st.sidebar:
     st.header("Filters")
-    upload = st.file_uploader("Upload earthquake CSV", type="csv")
+    upload = st.file_uploader("Upload aardbevingen CSV", type="csv")
 
     try:
         if upload:
@@ -167,31 +158,31 @@ with st.sidebar:
         else:
             earthquakes = load_csv("2.5_month.csv")
     except (ValueError, FileNotFoundError, pd.errors.ParserError) as error:
-        st.error(f"Could not load earthquake data: {error}")
+        st.error(f"Kon aardbevingsgegevens niet laden: {error}")
         st.stop()
 
     try:
         plates = load_plates("tectonic_plates.csv")
     except FileNotFoundError:
         plates = None
-        st.warning("tectonic_plates.csv not found — plate correlation disabled.")
+        st.warning("tectonic_plates.csv niet gevonden — plaatcorrelatie uitgeschakeld.")
 
     # Annotate earthquakes with nearest plate boundary (cached)
     if plates is not None:
-        with st.spinner("Matching earthquakes to plate boundaries…"):
+        with st.spinner("Aardbevingen koppelen aan plaatgrenzen…"):
             earthquakes = annotate_with_plates(earthquakes, plates)
 
     minimum = float(earthquakes["magnitude"].min())
     maximum = float(earthquakes["magnitude"].max())
 
-    min_magnitude = st.slider("Minimum magnitude", 2.5, 6.7, 2.5, 0.1)
+    min_magnitude = st.slider("Minimale magnitude", 2.5, 6.7, 2.5, 0.1)
     available_dates = earthquakes["time"].dt.date
-    date_range = st.date_input("Date range", (available_dates.min(), available_dates.max()))
+    date_range = st.date_input("Datumbereik", (available_dates.min(), available_dates.max()))
 
     # Optional: filter to quakes close to a boundary
     if plates is not None:
         max_distance = st.slider(
-            "Max distance to plate boundary (km)",
+            "Maximale afstand tot plaatgrens (km)",
             min_value=0,
             max_value=3000,
             value=3000,
@@ -200,13 +191,13 @@ with st.sidebar:
     else:
         max_distance = None
     if "plate_label" in earthquakes.columns:
-        boundary_options= ["All"]+ sorted(earthquakes['plate_label'].dropna().unique().tolist())
-        boundary_type= st.selectbox(
-            "boundary type",
+        boundary_options = ["Alle"] + sorted(earthquakes['plate_label'].dropna().unique().tolist())
+        boundary_type = st.selectbox(
+            "Type grens",
             boundary_options
         )
     else:
-        boundary_type = 'All'
+        boundary_type = 'Alle'
 
 # Apply filters
 
@@ -215,23 +206,23 @@ if isinstance(date_range, (tuple, list)) and len(date_range) == 2:
     filtered = filtered[filtered["time"].dt.date.between(date_range[0], date_range[1])]
 if max_distance is not None and "distance_km" in filtered:
     filtered = filtered[filtered["distance_km"].fillna(np.inf) <= max_distance]
-if boundary_type != 'All':
-    filtered=filtered[filtered['plate_label']== boundary_type]
+if boundary_type != 'Alle':
+    filtered = filtered[filtered['plate_label'] == boundary_type]
 
 
 # Metrics
 
 col1, col2, col3, col4 = st.columns(4)
-col1.metric("Earthquakes", f"{len(filtered):,}")
-col2.metric("Largest magnitude", f"{filtered.magnitude.max():.1f}" if len(filtered) else "—")
+col1.metric("Aardbevingen", f"{len(filtered):,}")
+col2.metric("Grootste magnitude", f"{filtered.magnitude.max():.1f}" if len(filtered) else "—")
 col3.metric(
-    "Average depth",
+    "Gemiddelde diepte",
     f"{filtered.depth_km.mean():.1f} km" if "depth_km" in filtered and len(filtered) else "—",
 )
 if "distance_km" in filtered and len(filtered):
-    col4.metric("Median dist. to boundary", f"{filtered.distance_km.median():.0f} km")
+    col4.metric("Mediaan afstand tot grens", f"{filtered.distance_km.median():.0f} km")
 else:
-    col4.metric("Median dist. to boundary", "—")
+    col4.metric("Mediaan afstand tot grens", "—")
 
 
 # Map + activity over time
@@ -239,25 +230,25 @@ else:
 map_col, chart_col = st.columns([1.25, 1])
 
 with map_col:
-    st.subheader("Where do earthquakes occur?")
+    st.subheader("Waar komen aardbevingen voor?")
 
     # Legend
     st.markdown(
         "<span style='color:#ff6464'>●</span> Convergent &nbsp; "
         "<span style='color:#6496ff'>●</span> Divergent &nbsp; "
         "<span style='color:#ffc850'>●</span> Transform &nbsp; "
-        "<span style='color:#b4b4b4'>●</span> Other<br>"
-        "● dot size = magnitude",
+        "<span style='color:#b4b4b4'>●</span> Overig<br>"
+        "● puntgrootte = magnitude",
         unsafe_allow_html=True,
     )
 
     show_boundaries = st.checkbox(
-    "Show tectonic plate boundaries",
-    value=True
+        "Toon tectonische plaatgrenzen",
+        value=True
     )
 
     if filtered.empty:
-        st.info("No earthquakes match the selected filters.")
+        st.info("Geen aardbevingen die overeenkomen met de geselecteerde filters.")
     else:
         map_df = filtered.dropna(subset=["latitude", "longitude"]).copy()
         if "plate_label" in map_df and map_df["plate_label"].notna().any():
@@ -270,7 +261,6 @@ with map_col:
 
             layers = []
 
-            # Plate boundary lines — GeoJsonLayer (reliable, sits behind dots)
             if show_boundaries and plates is not None:
                 plate_features = [
                     f for f in plates["feature"].tolist() if f is not None
@@ -289,7 +279,6 @@ with map_col:
                     )
                     layers.append(plate_layer)
 
-            # Earthquake dots — drawn on top
             eq_layer = pdk.Layer(
                 "ScatterplotLayer",
                 data=map_df,
@@ -316,22 +305,20 @@ with map_col:
             )
 
 with chart_col:
-    st.subheader("When do earthquakes occur?")
+    st.subheader("Wanneer komen aardbevingen voor?")
     if filtered.empty:
-        st.info("No data to plot.")
+        st.info("Geen gegevens om te tonen.")
     else:
         st.line_chart(
-            filtered.set_index("time").resample("D").size().rename("earthquakes")
+            filtered.set_index("time").resample("D").size().rename("aardbevingen")
         )
-
 
 
 # Plate boundary correlation
 
-
 if "plate_label" in filtered and filtered["plate_label"].notna().any():
     st.divider()
-    st.header("Earthquakes and tectonic plate boundaries")
+    st.header("Aardbevingen en tectonische plaatgrenzen")
 
     boundary_stats = (
         filtered.groupby("plate_label")
@@ -349,54 +336,51 @@ if "plate_label" in filtered and filtered["plate_label"].notna().any():
     b1, b2 = st.columns([1, 1])
 
     with b1:
-        st.subheader("How do earthquakes differ by boundary type?")
+        st.subheader("Hoe verschillen aardbevingen per type grens?")
         st.dataframe(boundary_stats, use_container_width=True)
 
     with b2:
-        st.subheader("How strong are earthquakes at different boundary types?")
+        st.subheader("Hoe sterk zijn aardbevingen bij verschillende typen grenzen?")
         st.bar_chart(boundary_stats["avg_magnitude"])
 
-
-    mag_df= filtered.dropna(subset=["plate_label", "magnitude"]).copy()
-    mag_df["magnitude_group"]=pd.cut(
-            mag_df['magnitude'],
-            bins= [0,3,4,5,6,7,8,9, np.inf],
-            labels=['<3','3-4','4-5','5-6','6-7','7-8','8-9', '9+']
-        )
+    mag_df = filtered.dropna(subset=["plate_label", "magnitude"]).copy()
+    mag_df["magnitude_group"] = pd.cut(
+        mag_df['magnitude'],
+        bins=[0, 3, 4, 5, 6, 7, 8, 9, np.inf],
+        labels=['<3', '3-4', '4-5', '5-6', '6-7', '7-8', '8-9', '9+']
+    )
     
-    mag_counts= (
-        mag_df.groupby(['plate_label', 'magnitude_group'], observed=True).size().reset_index(name= 'count')
-        )
-    mag_counts['percentage']= (
-        mag_counts['count']/ mag_counts.groupby( "plate_label")['count'].transform('sum') *100
+    mag_counts = (
+        mag_df.groupby(['plate_label', 'magnitude_group'], observed=True).size().reset_index(name='count')
+    )
+    mag_counts['percentage'] = (
+        mag_counts['count'] / mag_counts.groupby("plate_label")['count'].transform('sum') * 100
     )
 
-    st.subheader("How are earthquake magnitudes distributed by boundary type?")
-
+    st.subheader("Hoe zijn magnitudes verdeeld per type grens?")
 
     chart = alt.Chart(mag_counts).mark_bar().encode(
-    x=alt.X("plate_label:N", title="plate_label", axis=alt.Axis(labelAngle=-45, labelLimit=250)),
-    y=alt.Y("percentage:Q", title="percentage of earthquakes",),
-    color=alt.Color(
-        "magnitude_group:N",
-        scale=alt.Scale(
-            domain=["<3", "3-4", "4-5", "5-6", "6-7"],
-            range=["#deebf7", "#9ecae1", "#6baed6", "#3182bd", "#08519c"]
+        x=alt.X("plate_label:N", title="Type grens", axis=alt.Axis(labelAngle=-45, labelLimit=250)),
+        y=alt.Y("percentage:Q", title="Percentage aardbevingen"),
+        color=alt.Color(
+            "magnitude_group:N",
+            scale=alt.Scale(
+                domain=["<3", "3-4", "4-5", "5-6", "6-7"],
+                range=["#deebf7", "#9ecae1", "#6baed6", "#3182bd", "#08519c"]
+            ),
+            title="Magnitude"
         ),
-        title="magnitude_group"
-    ),
-    tooltip= [
-        alt.Tooltip("plate_label:N", title= "boundry type"),
-        alt.Tooltip("magnitude_group:N", title= 'magnitude'),
-        alt.Tooltip('count:Q', title= 'number of earthquakes'),
-        alt.Tooltip('percentage:Q', title= 'percentage', format='.1f') 
-    ]
+        tooltip=[
+            alt.Tooltip("plate_label:N", title="Type grens"),
+            alt.Tooltip("magnitude_group:N", title='Magnitude'),
+            alt.Tooltip('count:Q', title='Aantal aardbevingen'),
+            alt.Tooltip('percentage:Q', title='Percentage', format='.1f')
+        ]
     )
-
 
     st.altair_chart(chart, use_container_width=True)
 
-    st.subheader("Does distance from a plate boundary relate to earthquake depth?")
+    st.subheader("Hangt de afstand tot een plaatgrens samen met de diepte van de aardbeving?")
 
 scatter_df = filtered.dropna(
     subset=["distance_km", "depth_km"]
@@ -413,10 +397,10 @@ if not scatter_df.empty:
         size="magnitude",
     )
 else:
-    st.info("Not enough data for scatter plot.")
+    st.info("Niet genoeg gegevens voor een spreidingsdiagram.")
 
-    st.subheader("How close are earthquakes to plate boundaries?")
-    st.caption("Most earthquakes should fall within ~200 km of a plate boundary.")
+    st.subheader("Hoe dicht liggen aardbevingen bij plaatgrenzen?")
+    st.caption("De meeste aardbevingen zouden binnen ~200 km van een plaatgrens moeten liggen.")
     hist = pd.cut(
         filtered["distance_km"],
         bins=[0, 50, 100, 200, 500, 1000, 2000, np.inf],
@@ -427,9 +411,8 @@ else:
 
 # Recent earthquakes table
 
-
 st.divider()
-st.subheader("Recent earthquakes")
+st.subheader("Recente aardbevingen")
 
 columns = [
     c
@@ -448,7 +431,7 @@ columns = [
 ]
 
 if filtered.empty:
-    st.info("No earthquakes match the selected filters.")
+    st.info("Geen aardbevingen die overeenkomen met de geselecteerde filters.")
 else:
     st.dataframe(
         filtered.sort_values("time", ascending=False)[columns].head(100),
